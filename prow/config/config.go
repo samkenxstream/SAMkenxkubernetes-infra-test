@@ -39,6 +39,7 @@ import (
 
 	gitignore "github.com/denormal/go-gitignore"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/sirupsen/logrus"
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"gopkg.in/robfig/cron.v2"
@@ -76,6 +77,10 @@ const (
 	DefaultTenantID = "GlobalDefaultID"
 
 	ProwIgnoreFileName = ".prowignore"
+)
+
+var (
+	DefaultDiffOpts []cmp.Option = []cmp.Option{cmpopts.IgnoreFields(TideBranchMergeType{}, "Regexpr")}
 )
 
 // Config is a read-only snapshot of the config.
@@ -139,6 +144,11 @@ type ProwConfig struct {
 	Horologium           Horologium           `json:"horologium"`
 	SlackReporterConfigs SlackReporterConfigs `json:"slack_reporter_configs,omitempty"`
 	InRepoConfig         InRepoConfig         `json:"in_repo_config"`
+
+	// Gangway contains configurations needed by the the Prow API server of the
+	// same name. It encodes an allowlist of API clients and what kinds of Prow
+	// Jobs they are authorized to trigger.
+	Gangway Gangway `json:"gangway,omitempty"`
 
 	// TODO: Move this out of the main config.
 	JenkinsOperators []JenkinsOperator `json:"jenkins_operators,omitempty"`
@@ -1779,7 +1789,7 @@ func loadConfig(prowConfig, jobConfig string, additionalProwConfigDirs []string,
 	nc.ProwYAMLGetter = prowYAMLGetter
 	nc.ProwYAMLGetterWithDefaults = prowYAMLGetterWithDefaults
 
-	if deduplicatedTideQueries, err := deduplicateTideQueries(nc.Tide.Queries); err != nil {
+	if deduplicatedTideQueries, err := nc.deduplicateTideQueries(nc.Tide.Queries); err != nil {
 		logrus.WithError(err).Error("failed to deduplicate tide queriees")
 	} else {
 		nc.Tide.Queries = deduplicatedTideQueries
@@ -2127,6 +2137,10 @@ func (c *Config) validateComponentConfig() error {
 	}
 
 	if err := c.Deck.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.Gangway.Validate(); err != nil {
 		return err
 	}
 
@@ -2627,12 +2641,8 @@ func parseProwConfig(c *Config) error {
 		}
 	}
 
-	for name, method := range c.Tide.MergeType {
-		if method != types.MergeMerge &&
-			method != types.MergeRebase &&
-			method != types.MergeSquash {
-			return fmt.Errorf("merge type %q for %s is not a valid type", method, name)
-		}
+	if err := parseTideMergeType(c.Tide.MergeType); err != nil {
+		return fmt.Errorf("tide merge type: %w", err)
 	}
 
 	for name, templates := range c.Tide.MergeTemplate {
@@ -2709,6 +2719,44 @@ func parseProwConfig(c *Config) error {
 	}
 
 	return nil
+}
+
+// parseTideMergeType function parses a tide merge configuration and sets regexps out of every branch name.
+func parseTideMergeType(tideMergeTypes map[string]TideOrgMergeType) utilerrors.Aggregate {
+	isTideMergeTypeValid := func(mm types.PullRequestMergeType) bool {
+		return mm == types.MergeMerge || mm == types.MergeRebase || mm == types.MergeSquash
+	}
+	mergeTypeErrs := make([]error, 0)
+	for org, orgConfig := range tideMergeTypes {
+		// Validate orgs
+		if orgConfig.MergeType != "" && !isTideMergeTypeValid(orgConfig.MergeType) {
+			mergeTypeErrs = append(mergeTypeErrs,
+				fmt.Errorf("merge type %q for %s is not a valid type", orgConfig.MergeType, org))
+		}
+		for repo, repoConfig := range orgConfig.Repos {
+			// Validate repos
+			if repoConfig.MergeType != "" && !isTideMergeTypeValid(repoConfig.MergeType) {
+				mergeTypeErrs = append(mergeTypeErrs,
+					fmt.Errorf("merge type %q for %s/%s is not a valid type", repoConfig.MergeType, org, repo))
+			}
+			for branch, branchConfig := range repoConfig.Branches {
+				// Validate branches
+				regexpr, err := regexp.Compile(branch)
+				if err != nil {
+					mergeTypeErrs = append(mergeTypeErrs, fmt.Errorf("regex %q is not valid", branch))
+				} else {
+					branchConfig.Regexpr = regexpr
+				}
+				if !isTideMergeTypeValid(branchConfig.MergeType) {
+					mergeTypeErrs = append(mergeTypeErrs,
+						fmt.Errorf("merge type %q for %s/%s@%s is not a valid type",
+							branchConfig.MergeType, org, repo, branch))
+				}
+				repoConfig.Branches[branch] = branchConfig
+			}
+		}
+	}
+	return utilerrors.NewAggregate(mergeTypeErrs)
 }
 
 func validateLabels(labels map[string]string) error {
@@ -3226,7 +3274,7 @@ func (pc *ProwConfig) mergeFrom(additional *ProwConfig) error {
 	}
 
 	var errs []error
-	if diff := cmp.Diff(additional, emptyReference); diff != "" {
+	if diff := cmp.Diff(additional, emptyReference, DefaultDiffOpts...); diff != "" {
 		errs = append(errs, fmt.Errorf("only 'branch-protection', 'slack_reporter_configs', 'tide.merge_method' and 'tide.queries' may be set via additional config, all other fields have no merging logic yet. Diff: %s", diff))
 	}
 	if err := pc.BranchProtection.merge(&additional.BranchProtection); err != nil {
@@ -3351,7 +3399,7 @@ func (pc *ProwConfig) hasGlobalConfig() bool {
 		Tide:                 Tide{TideGitHubConfig: TideGitHubConfig{MergeType: pc.Tide.MergeType, Queries: pc.Tide.Queries}},
 		SlackReporterConfigs: pc.SlackReporterConfigs,
 	}
-	return cmp.Diff(pc, emptyReference) != ""
+	return cmp.Diff(pc, emptyReference, DefaultDiffOpts...) != ""
 }
 
 // tideQueryMap is a map[tideQueryConfig]*tideQueryTarget. Because slices are not comparable, they
@@ -3407,7 +3455,7 @@ func sortStringSlice(s []string) []string {
 	return s
 }
 
-func deduplicateTideQueries(queries TideQueries) (TideQueries, error) {
+func (c *Config) deduplicateTideQueries(queries TideQueries) (TideQueries, error) {
 	m := tideQueryMap{}
 	for _, query := range queries {
 		key := tideQueryConfig{
@@ -3418,6 +3466,7 @@ func deduplicateTideQueries(queries TideQueries) (TideQueries, error) {
 			MissingLabels:          sortStringSlice(query.MissingLabels),
 			Milestone:              query.Milestone,
 			ReviewApprovedRequired: query.ReviewApprovedRequired,
+			TenantIDs:              query.TenantIDs(*c),
 		}
 		keyRaw, err := json.Marshal(key)
 		if err != nil {

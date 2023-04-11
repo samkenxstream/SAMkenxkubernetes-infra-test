@@ -48,6 +48,7 @@ import (
 	prowapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	prowjobv1 "k8s.io/test-infra/prow/apis/prowjobs/v1"
 	"k8s.io/test-infra/prow/config/secret"
+	"k8s.io/test-infra/prow/git/types"
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/github/fakegithub"
 	"k8s.io/test-infra/prow/kube"
@@ -8133,6 +8134,7 @@ deck:
     size_limit: 100000000
   tide_update_period: 10s
 default_job_timeout: 24h0m0s
+gangway: {}
 gerrit:
   ratelimit: 5
   tick_interval: 1m0s
@@ -8213,6 +8215,7 @@ deck:
     size_limit: 100000000
   tide_update_period: 10s
 default_job_timeout: 24h0m0s
+gangway: {}
 gerrit:
   ratelimit: 5
   tick_interval: 1m0s
@@ -8286,6 +8289,7 @@ deck:
     size_limit: 100000000
   tide_update_period: 10s
 default_job_timeout: 24h0m0s
+gangway: {}
 gerrit:
   ratelimit: 5
   tick_interval: 1m0s
@@ -8364,6 +8368,7 @@ deck:
     size_limit: 100000000
   tide_update_period: 10s
 default_job_timeout: 24h0m0s
+gangway: {}
 gerrit:
   ratelimit: 5
   tick_interval: 1m0s
@@ -8815,7 +8820,7 @@ func TestProwConfigMergingProperties(t *testing.T) {
 				if err := newConfig.mergeFrom(fuzzedMergeableConfig); err != nil {
 					t.Fatalf("merging fuzzed mergeable config into empty config failed: %v", err)
 				}
-				if diff := cmp.Diff(newConfig, fuzzedMergeableConfig); diff != "" {
+				if diff := cmp.Diff(newConfig, fuzzedMergeableConfig, DefaultDiffOpts...); diff != "" {
 					t.Errorf("after merging config into an empty config, the config that was merged into differs from the one we merged from:\n%s\n", diff)
 				}
 			},
@@ -8913,16 +8918,22 @@ func TestProwConfigMergingProperties(t *testing.T) {
 	}
 }
 
+func TestEnsureConfigIsDiffable(t *testing.T) {
+	// This will panic in case it is not able to diff 'Config'.
+	_ = cmp.Diff(Config{}, Config{}, DefaultDiffOpts...)
+}
+
 // TestDeduplicateTideQueriesDoesntLoseData simply uses deduplicateTideQueries
 // on a single fuzzed tidequery, which should never result in any change as
 // there is nothing that could be deduplicated. This is mostly to ensure we
 // don't forget to change our code when new fields get added to the type.
 func TestDeduplicateTideQueriesDoesntLoseData(t *testing.T) {
+	config := &Config{}
 	for i := 0; i < 100; i++ {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			query := TideQuery{}
 			fuzz.New().Fuzz(&query)
-			result, err := deduplicateTideQueries(TideQueries{query})
+			result, err := config.deduplicateTideQueries(TideQueries{query})
 			if err != nil {
 				t.Fatalf("error: %v", err)
 			}
@@ -8936,9 +8947,10 @@ func TestDeduplicateTideQueriesDoesntLoseData(t *testing.T) {
 
 func TestDeduplicateTideQueries(t *testing.T) {
 	testCases := []struct {
-		name     string
-		in       TideQueries
-		expected TideQueries
+		name                  string
+		in                    TideQueries
+		prowJobDefaultEntries []*ProwJobDefaultEntry
+		expected              TideQueries
 	}{
 		{
 			name: "No overlap",
@@ -8967,17 +8979,176 @@ func TestDeduplicateTideQueries(t *testing.T) {
 			},
 			expected: TideQueries{{Orgs: []string{"kubernetes", "kubernetes-priv"}, Labels: []string{"lgtm", "merge-me"}}},
 		},
+		{
+			name: "Queries with different tenantIds don't get deduplicated",
+			in: TideQueries{
+				{Repos: []string{"kubernetes/test-infra"}, Labels: []string{"merge-me"}},
+				{Repos: []string{"kubernetes/tenanted"}, Labels: []string{"merge-me"}},
+				{Repos: []string{"kubernetes/other"}, Labels: []string{"merge-me"}},
+			},
+			prowJobDefaultEntries: []*ProwJobDefaultEntry{
+				{OrgRepo: "kubernetes/tenanted", Config: &prowapi.ProwJobDefault{TenantID: "tenanted"}},
+			},
+			expected: TideQueries{
+				{Repos: []string{"kubernetes/tenanted"}, Labels: []string{"merge-me"}},
+				{Repos: []string{"kubernetes/test-infra", "kubernetes/other"}, Labels: []string{"merge-me"}},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := deduplicateTideQueries(tc.in)
+			config := &Config{}
+			config.ProwConfig.ProwJobDefaultEntries = append(config.ProwConfig.ProwJobDefaultEntries, tc.prowJobDefaultEntries...)
+			result, err := config.deduplicateTideQueries(tc.in)
 			if err != nil {
 				t.Fatalf("failed: %v", err)
 			}
 
 			if diff := cmp.Diff(result, tc.expected); diff != "" {
 				t.Errorf("Result differs from expected: %v", diff)
+			}
+		})
+	}
+}
+
+func TestParseTideMergeType(t *testing.T) {
+	exportRegexp := cmp.AllowUnexported(TideBranchMergeType{})
+	regexpComparer := cmp.Comparer(func(a, b *regexp.Regexp) bool {
+		return (a == nil && b == nil) || (a != nil && b != nil) && (a.String() == b.String())
+	})
+	errComparer := cmp.Comparer(func(a, b error) bool {
+		return (a == nil && b == nil) || (a != nil && b != nil) && (a.Error() == b.Error())
+	})
+	sortSlices := cmpopts.SortSlices(func(a, b error) bool {
+		return a.Error() < b.Error()
+	})
+	for _, tc := range []struct {
+		name       string
+		mergeTypes map[string]TideOrgMergeType
+		wantTypes  map[string]TideOrgMergeType
+		wantErrs   []error
+	}{
+		{
+			name: "No errors",
+			mergeTypes: map[string]TideOrgMergeType{
+				"k8s": {
+					MergeType: types.MergeRebase,
+				},
+				"k8s/test": {
+					MergeType: types.MergeSquash,
+				},
+				"k8s/test@test": {
+					MergeType: types.MergeSquash,
+				},
+				"kubernetes": {
+					Repos: map[string]TideRepoMergeType{
+						"test-infra": {
+							MergeType: types.MergeSquash,
+						},
+					},
+				},
+				"golang": {
+					Repos: map[string]TideRepoMergeType{
+						"go": {
+							Branches: map[string]TideBranchMergeType{
+								"master": {
+									MergeType: types.MergeMerge,
+								},
+								"main.+": {
+									MergeType: types.MergeRebase,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantTypes: map[string]TideOrgMergeType{
+				"k8s": {
+					MergeType: types.MergeRebase,
+				},
+				"k8s/test": {
+					MergeType: types.MergeSquash,
+				},
+				"k8s/test@test": {
+					MergeType: types.MergeSquash,
+				},
+				"kubernetes": {
+					Repos: map[string]TideRepoMergeType{
+						"test-infra": {
+							MergeType: types.MergeSquash,
+						},
+					},
+				},
+				"golang": {
+					Repos: map[string]TideRepoMergeType{
+						"go": {
+							Branches: map[string]TideBranchMergeType{
+								"master": {
+									MergeType: types.MergeMerge,
+									Regexpr:   regexp.MustCompile("master"),
+								},
+								"main.+": {
+									MergeType: types.MergeRebase,
+									Regexpr:   regexp.MustCompile("main.+"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Errors on every config level",
+			mergeTypes: map[string]TideOrgMergeType{
+				"k8s": {
+					MergeType: "fake-org-mm",
+				},
+				"kubernetes": {
+					Repos: map[string]TideRepoMergeType{
+						"test-infra": {
+							MergeType: "fake-repo-mm",
+						},
+						"kubernetes": {
+							Branches: map[string]TideBranchMergeType{
+								"main": {
+									MergeType: "fake-br-mm",
+								},
+								"invalid-regex[": {
+									MergeType: types.MergeMerge,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrs: []error{
+				errors.New(`merge type "fake-org-mm" for k8s is not a valid type`),
+				errors.New(`merge type "fake-repo-mm" for kubernetes/test-infra is not a valid type`),
+				errors.New(`merge type "fake-br-mm" for kubernetes/kubernetes@main is not a valid type`),
+				errors.New(`regex "invalid-regex[" is not valid`),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := parseTideMergeType(tc.mergeTypes)
+			if len(tc.wantErrs) > 0 {
+				if err == nil {
+					t.Errorf("expected err '%v', got nil", tc.wantErrs)
+				}
+				// Resulting errors are not guaranteed to be always in the same order, due to how
+				// hashmap is implemented in Go. We need to sort first and then compare.
+				if diff := cmp.Diff(tc.wantErrs, err.Errors(), errComparer, sortSlices); diff != "" {
+					t.Errorf("errors don't match: %v", diff)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected err nil, got '%v'", err)
+				}
+
+				if diff := cmp.Diff(tc.wantTypes, tc.mergeTypes, regexpComparer, exportRegexp); diff != "" {
+					t.Errorf("tide configs doesn't match: %v", diff)
+				}
 			}
 		})
 	}

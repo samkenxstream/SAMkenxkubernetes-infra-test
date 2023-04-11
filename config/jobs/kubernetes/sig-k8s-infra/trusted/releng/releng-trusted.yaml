@@ -13,7 +13,7 @@ postsubmits:
     spec:
       serviceAccountName: k8s-infra-promoter
       containers:
-      - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.11-1
+      - image: registry.k8s.io/artifact-promoter/kpromo:v3.5.2-0
         command:
         - /kpromo
         args:
@@ -30,7 +30,7 @@ postsubmits:
     decorate: true
     decoration_config:
       timeout: 4h
-    run_if_changed: 'k8s.gcr.io/((images/.*/images\.yaml)|(manifests/.*/promoter-manifest\.yaml))'
+    run_if_changed: 'registry.k8s.io/((images/.*/images\.yaml)|(manifests/.*/promoter-manifest\.yaml))'
     # Never run more than 1 job at a time. This is because we don't want to run
     # into a case where an older manifest PR merge gets run last (after a newer
     # one).
@@ -44,12 +44,12 @@ postsubmits:
     spec:
       serviceAccountName: k8s-infra-gcr-promoter
       containers:
-      - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.11-1
+      - image: registry.k8s.io/artifact-promoter/kpromo:v3.5.2-0
         command:
         - /kpromo
         args:
         - cip
-        - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/k8s.gcr.io
+        - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/registry.k8s.io
         - --use-prow-manifest-diff
         - --confirm
         env:
@@ -110,7 +110,7 @@ periodics:
   spec:
     serviceAccountName: k8s-infra-promoter
     containers:
-    - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.11-1
+    - image: registry.k8s.io/artifact-promoter/kpromo:v3.5.2-0
       command:
       - /kpromo
       args:
@@ -127,9 +127,98 @@ periodics:
       - org: kubernetes
         slug: release-managers
 
-# ci-k8sio-image-promo runs every 1 hour, to make sure that the destination
-# GCRs do not deviate away from the intent of the manifest.
+# Copy artifacts to mirrors (periodic drift correction)
 - interval: 1h
+  cluster: k8s-infra-prow-build-trusted
+  max_concurrency: 1
+  name: ci-k8sio-file-promo-mirrors
+  decorate: true
+  extra_refs:
+  - org: kubernetes
+    repo: k8s.io
+    base_ref: main
+  spec:
+    serviceAccountName: k8s-infra-promoter
+    containers:
+    - name: promote-to-mirrors
+      image: registry.k8s.io/artifact-promoter/kpromo:v3.5.2-0
+      command:
+      - /kpromo
+      args:
+      - run
+      - files
+      - --manifests=/home/prow/go/src/github.com/kubernetes/k8s.io/artifacts/mirroring
+      - --confirm
+      - --use-service-account
+      env:
+        - name: AWS_ROLE_ARN
+          value: arn:aws:iam::354561287328:role/artifacts.k8s.io_s3writer
+        - name: AWS_WEB_IDENTITY_TOKEN_FILE
+          value: /var/run/secrets/aws-iam-token/serviceaccount/token
+        - name: AWS_REGION
+          value: us-east-1
+      resources:
+        # We hash files as we upload them, so take a whole core
+        requests:
+          cpu: 1
+          memory: "2Gi"
+        limits:
+          cpu: 1
+          memory: "2Gi"
+      volumeMounts:
+        - mountPath: /var/run/secrets/aws-iam-token/serviceaccount
+          name: aws-iam-token
+          readOnly: true
+    - name: promote-to-mirrors-staging
+      image: registry.k8s.io/artifact-promoter/kpromo:v3.5.2-0
+      command:
+      - /kpromo
+      args:
+      - run
+      - files
+      - --manifests=/home/prow/go/src/github.com/kubernetes/k8s.io/artifacts/mirroring-staging
+      - --confirm
+      - --use-service-account
+      env:
+        - name: AWS_ROLE_ARN
+          value: arn:aws:iam::354561287328:role/artifacts.k8s.io_s3writer
+        - name: AWS_WEB_IDENTITY_TOKEN_FILE
+          value: /var/run/secrets/aws-iam-token/serviceaccount/token
+        - name: AWS_REGION
+          value: us-east-1
+      resources:
+        # We hash files as we upload them, so take a whole core
+        requests:
+          cpu: 1
+          memory: "2Gi"
+        limits:
+          cpu: 1
+          memory: "2Gi"
+      volumeMounts:
+        - mountPath: /var/run/secrets/aws-iam-token/serviceaccount
+          name: aws-iam-token
+          readOnly: true
+    volumes:
+    - name: aws-iam-token
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            audience: sts.amazonaws.com
+            expirationSeconds: 86400
+            path: token
+  annotations:
+    testgrid-dashboards: sig-release-releng-blocking, sig-k8s-infra-k8sio
+    #testgrid-alert-email: k8s-infra-alerts@kubernetes.io, release-managers+alerts@kubernetes.io
+    #testgrid-num-failures-to-alert: '2'
+  rerun_auth_config:
+    github_team_slugs:
+      - org: kubernetes
+        slug: release-managers
+
+# ci-k8sio-image-promo runs daily as a backstop on top of the postsubmit
+# ~midnight pacific
+- cron: '0 7 * * *'
   cluster: k8s-infra-prow-build-trusted
   max_concurrency: 1
   # Run only 1 of image promotion postsubmit and periodic at the same time.
@@ -152,12 +241,12 @@ periodics:
     # https://github.com/kubernetes/k8s.io/pull/695.
     serviceAccountName: k8s-infra-gcr-promoter
     containers:
-    - image: registry.k8s.io/artifact-promoter/kpromo:v3.4.11-1
+    - image: registry.k8s.io/artifact-promoter/kpromo:v3.5.2-0
       command:
       - /kpromo
       args:
       - cip
-      - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/k8s.gcr.io
+      - --thin-manifest-dir=/home/prow/go/src/github.com/kubernetes/k8s.io/registry.k8s.io
       - --confirm
       env:
       - name: GOMAXPROCS

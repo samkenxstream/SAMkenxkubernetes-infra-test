@@ -41,7 +41,7 @@ readonly master_ssh_supported_providers="gce aws"
 readonly node_ssh_supported_providers="gce gke aws"
 readonly gcloud_supported_providers="gce gke"
 
-readonly master_logfiles="kube-apiserver.log kube-apiserver-audit.log kube-scheduler.log kube-controller-manager.log etcd.log etcd-events.log glbc.log cluster-autoscaler.log kube-addon-manager.log konnectivity-server.log fluentd.log kubelet.cov"
+readonly master_logfiles="kube-apiserver.log kube-apiserver-audit.log kube-scheduler.log cloud-controller-manager.log kube-controller-manager.log etcd.log etcd-events.log glbc.log cluster-autoscaler.log kube-addon-manager.log konnectivity-server.log fluentd.log kubelet.cov"
 readonly node_logfiles="kube-proxy.log containers/konnectivity-agent-*.log fluentd.log node-problem-detector.log kubelet.cov"
 readonly node_systemd_services="node-problem-detector"
 readonly hollow_node_logfiles="kubelet-hollow-node-*.log kubeproxy-hollow-node-*.log npd-hollow-node-*.log"
@@ -831,7 +831,20 @@ function dump_node_info() {
     printf "%s\n" "${WINDOWS_NODE_NAMES[@]}" > "${nodes_dir}/windows_node_names.txt"
   fi
 
-  kubectl get nodes -o yaml > "${nodes_dir}/kubectl_get_nodes.yaml" || true
+  # If we are not able to reach the server, just bail out as the other
+  # kubectl calls below will fail anyway (we don't want to error out collecting logs)
+  kubectl version || return 0
+
+  kubectl get nodes -o yaml > "${nodes_dir}/kubectl_get_nodes.yaml"
+
+  api_node_names=()
+  api_node_names+=($( kubectl get nodes -o 'template={{ range .items }}{{ .metadata.name }}{{ "\n" }}{{ end }}' ))
+  if [[ "${#api_node_names[@]}" -le 5 ]]; then
+    for node_name in "${api_node_names[@]}"; do
+      mkdir -p "${nodes_dir}/${node_name}"
+      kubectl get --raw "/api/v1/nodes/${node_name}/proxy/metrics" > "${nodes_dir}/${node_name}/kubelet_metrics.txt"
+    done
+  fi
 }
 
 function detect_node_failures() {

@@ -4,13 +4,11 @@ presubmits:
     decorate: true
     always_run: true
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         args:
@@ -27,13 +25,11 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         args:
@@ -50,15 +46,13 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         args:
@@ -75,15 +69,13 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
       preset-dind-enabled: "true"
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         args:
@@ -100,8 +92,6 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
@@ -114,7 +104,7 @@ presubmits:
       workdir: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         - kubetest
@@ -148,8 +138,6 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
@@ -162,7 +150,7 @@ presubmits:
       workdir: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         - kubetest
@@ -194,8 +182,6 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
@@ -208,7 +194,7 @@ presubmits:
       workdir: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         - kubetest
@@ -245,8 +231,6 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
@@ -259,7 +243,7 @@ presubmits:
       workdir: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         - kubetest
@@ -296,8 +280,6 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
@@ -310,7 +292,7 @@ presubmits:
       workdir: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         - kubetest
@@ -347,8 +329,6 @@ presubmits:
     decorate: true
     skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-    - master
     labels:
       preset-service-account: "true"
       preset-azure-cred: "true"
@@ -361,7 +341,7 @@ presubmits:
       workdir: true
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
         command:
         - runner.sh
         - kubetest
@@ -396,11 +376,8 @@ presubmits:
       testgrid-num-columns-recent: '30'
   - name: pull-blob-csi-driver-e2e-capz
     decorate: true
-    always_run: false
-    optional: true
+    skip_if_only_changed: "^docs/|^site/|^\\.github/|\\.(md|adoc)$|^(README|LICENSE)$"
     path_alias: sigs.k8s.io/blob-csi-driver
-    branches:
-      - master
     labels:
       preset-dind-enabled: "true"
       preset-kind-volume-mounts: "true"
@@ -409,12 +386,17 @@ presubmits:
     extra_refs:
       - org: kubernetes-sigs
         repo: cluster-api-provider-azure
-        base_ref: release-1.6
+        base_ref: release-1.8
         path_alias: sigs.k8s.io/cluster-api-provider-azure
         workdir: true
+      - org: kubernetes-sigs
+        repo: cloud-provider-azure
+        base_ref: master
+        path_alias: sigs.k8s.io/cloud-provider-azure
+        workdir: false
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
           command:
             - runner.sh
             - ./scripts/ci-entrypoint.sh
@@ -427,10 +409,14 @@ presubmits:
           securityContext:
             privileged: true
           env:
-            - name: NODE_MACHINE_TYPE
+            - name: NODE_MACHINE_TYPE # CAPZ config
               value: "Standard_D2s_v3"
+            - name: KUBERNETES_VERSION # CAPZ config
+              value: "latest-1.26"
+            - name: DISABLE_ZONE
+              value: "true"
     annotations:
       testgrid-dashboards: provider-azure-blobfuse-csi-driver
-      testgrid-tab-name: pull-blob-csi-driver-e2e-capz
+      testgrid-tab-name: pr-blob-csi-driver-e2e-capz
       description: "Run E2E tests on a capz cluster for Blob CSI driver."
       testgrid-num-columns-recent: '30'

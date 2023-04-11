@@ -150,24 +150,50 @@ func main() {
 		logrus.WithError(err).Fatal("Error creating manager")
 	}
 
-	buildManagers, err := o.kubernetes.BuildClusterManagers(o.dryRun,
-		// The watch apimachinery doesn't support restarts, so just exit the
-		// binary if a build cluster can be connected later .
-		func() {
-			logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
-			interrupts.Terminate()
-		},
+	// The watch apimachinery doesn't support restarts, so just exit the
+	// binary if a build cluster can be connected later.
+	callBack := func() {
+		logrus.Info("Build cluster that failed to connect initially now worked, exiting to trigger a restart.")
+		interrupts.Terminate()
+	}
+
+	// We require operating on test pods in build clusters with the following
+	// verbs. This is used during startup to check that we have the necessary
+	// authorizations on build clusters.
+	//
+	// NOTE: Setting up build cluster managers is tricky because if we don't
+	// have the required permissions, the controller manager setup machinery
+	// (library code, not our code) can return an error and this can essentially
+	// result in a fatal error, resulting in a crash loop on startup. Although
+	// other components such as crier, deck, and hook also need to talk to build
+	// clusters, we only perform this preemptive requiredTestPodVerbs check for
+	// PCM and sinker because only these latter components make use of the
+	// BuildClusterManagers() call.
+	requiredTestPodVerbs := []string{
+		"create",
+		"delete",
+		"list",
+		"watch",
+		"get",
+		"patch",
+	}
+
+	buildClusterManagers, err := o.kubernetes.BuildClusterManagers(o.dryRun,
+		requiredTestPodVerbs,
+		callBack,
 		func(o *manager.Options) {
 			o.Namespace = cfg().PodNamespace
 		},
 	)
 	if err != nil {
-		logrus.WithError(err).Error("Failed to construct build cluster managers. Is there a bad entry in the kubeconfig secret?")
+		logrus.WithError(err).Error("Failed to construct build cluster managers. Please check that the kubeconfig secrets are correct, and that RBAC roles on the build cluster allow Prow's service account to list pods on it.")
 	}
 
-	for _, buildManager := range buildManagers {
-		if err := mgr.Add(buildManager); err != nil {
-			logrus.WithError(err).Fatal("Failed to add build cluster manager to main manager")
+	for buildClusterName, buildClusterManager := range buildClusterManagers {
+		if err := mgr.Add(buildClusterManager); err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"cluster": buildClusterName,
+			}).Fatalf("Failed to add build cluster manager to main manager")
 		}
 	}
 
@@ -192,7 +218,7 @@ func main() {
 	}
 
 	if enabledControllersSet.Has(plank.ControllerName) {
-		if err := plank.Add(mgr, buildManagers, knownClusters, cfg, opener, o.totURL, o.selector); err != nil {
+		if err := plank.Add(mgr, buildClusterManagers, knownClusters, cfg, opener, o.totURL, o.selector); err != nil {
 			logrus.WithError(err).Fatal("Failed to add plank to manager")
 		}
 	}

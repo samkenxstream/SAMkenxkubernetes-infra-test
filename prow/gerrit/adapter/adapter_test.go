@@ -19,6 +19,7 @@ package adapter
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -199,7 +200,7 @@ func TestHandleInRepoConfigError(t *testing.T) {
 			name:             "Resolved error sends error again, resend review",
 			err:              errors.New("InRepoConfigError"),
 			expectedReview:   true,
-			startingFailures: map[string]bool{changeHash: false},
+			startingFailures: map[string]bool{},
 			expectedFailures: map[string]bool{changeHash: true},
 		},
 		{
@@ -207,15 +208,15 @@ func TestHandleInRepoConfigError(t *testing.T) {
 			err:              nil,
 			expectedReview:   false,
 			startingFailures: map[string]bool{changeHash: true},
-			expectedFailures: map[string]bool{changeHash: false},
+			expectedFailures: map[string]bool{},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			gc := &fgc{reviews: 0}
 			controller := &Controller{
-				inRepoConfigFailures: tc.startingFailures,
-				gc:                   gc,
+				inRepoConfigFailuresTracker: tc.startingFailures,
+				gc:                          gc,
 			}
 
 			ret := controller.handleInRepoConfigError(tc.err, instanceName, change)
@@ -228,7 +229,7 @@ func TestHandleInRepoConfigError(t *testing.T) {
 			if !tc.expectedReview && gc.reviews != 0 {
 				t.Error("expected no reviews and got one")
 			}
-			if diff := cmp.Diff(tc.expectedFailures, controller.inRepoConfigFailures, cmpopts.SortSlices(func(a, b string) bool {
+			if diff := cmp.Diff(tc.expectedFailures, controller.inRepoConfigFailuresTracker, cmpopts.SortSlices(func(a, b string) bool {
 				return a < b
 			})); diff != "" {
 				t.Fatalf("expected failures mismatch. got(+), want(-):\n%s", diff)
@@ -300,6 +301,124 @@ func TestCreateRefs(t *testing.T) {
 	}
 	if !equality.Semantic.DeepEqual(expected, actual) {
 		t.Errorf("diff between expected and actual refs:%s", diff.ObjectReflectDiff(expected, actual))
+	}
+}
+
+func TestFindLatestRevisionWithoutCodeChange(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name       string
+		change     gerrit.ChangeInfo
+		lastUpdate time.Time
+		expected   *gerrit.RevisionInfo
+	}{
+		{
+			name: "should return nil if no code change since last update",
+			change: client.ChangeInfo{
+				Project:         "foo",
+				ChangeID:        "33521",
+				CurrentRevision: "2",
+				Revisions: map[string]gerrit.RevisionInfo{
+					"1": {
+						Number:  1,
+						Created: makeStamp(now.Add(-time.Hour)),
+						Kind:    gerrit.MergeFirstParentUpdate,
+					},
+					"2": {
+						Number:  2,
+						Created: makeStamp(now.Add(time.Hour)),
+						Kind:    gerrit.NoCodeChange,
+					},
+				},
+			},
+			lastUpdate: now,
+			expected:   nil,
+		},
+		{
+			name: "should return last revision with code change since last update when the last revision has no code change",
+			change: client.ChangeInfo{
+				Project:         "foo",
+				ChangeID:        "33521",
+				CurrentRevision: "3",
+				Revisions: map[string]gerrit.RevisionInfo{
+					"1": {
+						Number:  1,
+						Created: makeStamp(now.Add(-time.Hour)),
+						Kind:    gerrit.MergeFirstParentUpdate,
+					},
+					"2": {
+						Number:  2,
+						Created: makeStamp(now.Add(time.Hour)),
+						Kind:    gerrit.Rework,
+					},
+					"3": {
+						Number:  3,
+						Created: makeStamp(now.Add(2 * time.Hour)),
+						Kind:    gerrit.NoCodeChange,
+					},
+				},
+			},
+			lastUpdate: now,
+			expected: &client.RevisionInfo{
+				Number:  2,
+				Created: makeStamp(now.Add(time.Hour)),
+				Kind:    gerrit.Rework,
+			},
+		},
+		{
+			name: "should return last revision with code change since last update when the last revision has code change",
+			change: client.ChangeInfo{
+				Project:         "foo",
+				ChangeID:        "33521",
+				CurrentRevision: "4",
+				Revisions: map[string]gerrit.RevisionInfo{
+					"1": {
+						Number:  1,
+						Created: makeStamp(now.Add(-time.Hour)),
+						Kind:    gerrit.MergeFirstParentUpdate,
+					},
+					"2": {
+						Number:  2,
+						Created: makeStamp(now.Add(time.Hour)),
+						Kind:    gerrit.NoCodeChange,
+					},
+					"3": {
+						Number:  3,
+						Created: makeStamp(now.Add(2 * time.Hour)),
+						Kind:    gerrit.MergeFirstParentUpdate,
+					},
+					"4": {
+						Number:  4,
+						Created: makeStamp(now.Add(3 * time.Hour)),
+						Kind:    gerrit.Rework,
+					},
+				},
+			},
+			lastUpdate: now,
+			expected: &client.RevisionInfo{
+				Number:  4,
+				Created: makeStamp(now.Add(3 * time.Hour)),
+				Kind:    gerrit.Rework,
+			},
+		},
+		{
+			name: "should return nil if the change list has no revision",
+			change: client.ChangeInfo{
+				Project:  "foo",
+				ChangeID: "33521",
+			},
+			lastUpdate: now,
+			expected:   nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rev := lastRevisionWithCodeChange(tc.change, tc.lastUpdate)
+			if !reflect.DeepEqual(rev, tc.expected) {
+				t.Errorf("expected revision: %+v, got: %+v", tc.expected, rev)
+			}
+		})
 	}
 }
 
@@ -443,7 +562,7 @@ func TestFailedJobs(t *testing.T) {
 	}
 }
 
-func createTestRepoCache(t *testing.T, ca *fca) (*config.InRepoConfigCacheHandler, error) {
+func createTestRepoCache(t *testing.T, ca *fca) (*config.InRepoConfigCache, error) {
 	// processChange takes a ClientFactory. If provided a nil clientFactory it will skip inRepoConfig
 	// otherwise it will get the prow yaml using the client provided. We are mocking ProwYamlGetter
 	// so we are creating a localClientFactory but leaving it unpopulated.
@@ -464,11 +583,10 @@ func createTestRepoCache(t *testing.T, ca *fca) (*config.InRepoConfigCacheHandle
 
 	// Initialize cache for fetching Presubmit and Postsubmit information. If
 	// the cache cannot be initialized, exit with an error.
-	cache, err := config.NewInRepoConfigCacheHandler(
+	cache, err := config.NewInRepoConfigCache(
 		10,
 		ca,
-		config.NewInRepoConfigGitCache(cf),
-		1)
+		config.NewInRepoConfigGitCache(cf))
 	if err != nil {
 		t.Errorf("error creating cache: %v", err)
 	}
@@ -3075,12 +3193,12 @@ func TestProcessChange(t *testing.T) {
 			var gc fgc
 			gc.instanceMap = tc.instancesMap
 			c := &Controller{
-				config:                   fca.Config,
-				prowJobClient:            fakeProwJobClient.ProwV1().ProwJobs("prowjobs"),
-				gc:                       &gc,
-				tracker:                  &fakeSync{val: fakeLastSync},
-				inRepoConfigCacheHandler: cache,
-				inRepoConfigFailures:     make(map[string]bool),
+				config:                      fca.Config,
+				prowJobClient:               fakeProwJobClient.ProwV1().ProwJobs("prowjobs"),
+				gc:                          &gc,
+				tracker:                     &fakeSync{val: fakeLastSync},
+				inRepoConfigCache:           cache,
+				inRepoConfigFailuresTracker: make(map[string]bool),
 			}
 
 			err = c.processChange(logrus.WithField("name", tc.name), tc.instance, tc.change)

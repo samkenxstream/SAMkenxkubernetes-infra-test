@@ -13,7 +13,7 @@ replace (
 	github.com/gregjones/httpcache => github.com/alvaroaleman/httpcache v0.0.0-20210618195546-ab9a1a3f8a38
 
 	golang.org/x/lint => golang.org/x/lint v0.0.0-20190409202823-959b441ac422
-	gopkg.in/yaml.v3 => gopkg.in/yaml.v3 v3.0.0-20190709130402-674ba3eaed22
+	gopkg.in/yaml.v3 => gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -29,7 +29,7 @@ require (
 	github.com/Azure/go-autorest/autorest/adal v0.9.20
 	github.com/GoogleCloudPlatform/testgrid v0.0.123
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/andygrunwald/go-gerrit v0.0.0-20210709065208-9d38b0be0268
+	github.com/andygrunwald/go-gerrit v0.0.0-20230211083816-04e01d7217b2
 	github.com/andygrunwald/go-jira v1.14.0
 	github.com/aws/aws-sdk-go v1.38.49
 	github.com/bazelbuild/buildtools v0.0.0-20200922170545-10384511ce98
@@ -59,6 +59,7 @@ require (
 	github.com/gorilla/securecookie v1.1.1
 	github.com/gorilla/sessions v1.2.0
 	github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc
+	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-retryablehttp v0.7.0
 	github.com/hashicorp/golang-lru v0.5.4
@@ -96,6 +97,7 @@ require (
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/ini.v1 v1.62.0
 	gopkg.in/robfig/cron.v2 v2.0.0-20150107220207-be2e0b0deed5
+	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.24.2
 	k8s.io/apimachinery v0.24.2
@@ -207,7 +209,6 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	k8s.io/apiextensions-apiserver v0.24.2 // indirect
 	k8s.io/component-base v0.24.2 // indirect
 	k8s.io/gengo v0.0.0-20220307231824-4627b89bbf1b // indirect

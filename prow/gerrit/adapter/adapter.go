@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,6 +53,7 @@ var gerritMetrics = struct {
 	processingResults     *prometheus.CounterVec
 	triggerLatency        *prometheus.HistogramVec
 	changeProcessDuration *prometheus.HistogramVec
+	changeSyncDuration    *prometheus.HistogramVec
 }{
 	processingResults: prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "gerrit_processing_results",
@@ -76,12 +78,18 @@ var gerritMetrics = struct {
 	}, []string{
 		"org",
 	}),
+	changeSyncDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "gerrit_instance_change_sync_duration",
+		Help:    "Histogram of seconds spent syncing changes from a single gerrit instance.",
+		Buckets: []float64{5, 10, 20, 30, 60, 120, 180, 300, 600, 1200, 3600},
+	}, []string{"org"}),
 }
 
 func init() {
 	prometheus.MustRegister(gerritMetrics.processingResults)
 	prometheus.MustRegister(gerritMetrics.triggerLatency)
 	prometheus.MustRegister(gerritMetrics.changeProcessDuration)
+	prometheus.MustRegister(gerritMetrics.changeSyncDuration)
 }
 
 type prowJobClient interface {
@@ -101,19 +109,19 @@ type gerritClient interface {
 
 // Controller manages gerrit changes.
 type Controller struct {
-	config                   config.Getter
-	prowJobClient            prowJobClient
-	gc                       gerritClient
-	tracker                  LastSyncTracker
-	projectsOptOutHelp       map[string]sets.String
-	lock                     sync.RWMutex
-	cookieFilePath           string
-	configAgent              *config.Agent
-	inRepoConfigCacheHandler *config.InRepoConfigCacheHandler
-	inRepoConfigFailures     map[string]bool
-	instancesWithWorker      map[string]bool
-	latestMux                sync.Mutex
-	workerPoolSize           int
+	config                      config.Getter
+	prowJobClient               prowJobClient
+	gc                          gerritClient
+	tracker                     LastSyncTracker
+	projectsOptOutHelp          map[string]sets.String
+	lock                        sync.RWMutex
+	cookieFilePath              string
+	configAgent                 *config.Agent
+	inRepoConfigCache           *config.InRepoConfigCache
+	inRepoConfigFailuresTracker map[string]bool
+	instancesWithWorker         map[string]bool
+	latestMux                   sync.Mutex
+	workerPoolSize              int
 }
 
 type LastSyncTracker interface {
@@ -123,7 +131,7 @@ type LastSyncTracker interface {
 
 // NewController returns a new gerrit controller client
 func NewController(ctx context.Context, prowJobClient prowv1.ProwJobInterface, op io.Opener,
-	ca *config.Agent, cookiefilePath, tokenPathOverride, lastSyncFallback string, workerPoolSize int, inRepoConfigCacheHandler *config.InRepoConfigCacheHandler) *Controller {
+	ca *config.Agent, cookiefilePath, tokenPathOverride, lastSyncFallback string, workerPoolSize int, inRepoConfigCache *config.InRepoConfigCache) *Controller {
 
 	cfg := ca.Config
 	projectsOptOutHelpMap := map[string]sets.String{}
@@ -140,17 +148,17 @@ func NewController(ctx context.Context, prowJobClient prowv1.ProwJobInterface, o
 		logrus.WithError(err).Fatal("Error creating gerrit client.")
 	}
 	c := &Controller{
-		prowJobClient:            prowJobClient,
-		config:                   cfg,
-		gc:                       gerritClient,
-		tracker:                  lastSyncTracker,
-		projectsOptOutHelp:       projectsOptOutHelpMap,
-		cookieFilePath:           cookiefilePath,
-		configAgent:              ca,
-		inRepoConfigCacheHandler: inRepoConfigCacheHandler,
-		inRepoConfigFailures:     map[string]bool{},
-		instancesWithWorker:      make(map[string]bool),
-		workerPoolSize:           workerPoolSize,
+		prowJobClient:               prowJobClient,
+		config:                      cfg,
+		gc:                          gerritClient,
+		tracker:                     lastSyncTracker,
+		projectsOptOutHelp:          projectsOptOutHelpMap,
+		cookieFilePath:              cookiefilePath,
+		configAgent:                 ca,
+		inRepoConfigCache:           inRepoConfigCache,
+		inRepoConfigFailuresTracker: map[string]bool{},
+		instancesWithWorker:         make(map[string]bool),
+		workerPoolSize:              workerPoolSize,
 	}
 
 	// applyGlobalConfig reads gerrit configurations from global gerrit config,
@@ -237,6 +245,7 @@ func (c *Controller) Sync() {
 		}()
 
 		changes := c.gc.QueryChangesForInstance(instance, syncTime, c.config().Gerrit.RateLimit)
+		timeQueryChangesForInstance := time.Now()
 		log.WithFields(logrus.Fields{"instance": instance, "changes": len(changes), "duration(s)": time.Since(now).Seconds()}).Info("Time taken querying for gerrit changes")
 
 		if len(changes) == 0 {
@@ -260,6 +269,7 @@ func (c *Controller) Sync() {
 			changeChan <- Change{changeInfo: change, instance: instance, tracker: timeBeforeSent}
 		}
 		wg.Wait()
+		gerritMetrics.changeSyncDuration.WithLabelValues(instance).Observe((float64(time.Since(timeQueryChangesForInstance).Seconds())))
 		close(changeChan)
 		c.tracker.Update(latest)
 	}
@@ -395,23 +405,26 @@ func failedJobs(account int, revision int, messages ...gerrit.ChangeMessageInfo)
 func (c *Controller) handleInRepoConfigError(err error, instance string, change gerrit.ChangeInfo) error {
 	key := fmt.Sprintf("%s%s%s", instance, change.ID, change.CurrentRevision)
 	if err != nil {
-		// If we have not already recorded this failure send an error essage
-		if failed, ok := c.inRepoConfigFailures[key]; !ok || !failed {
+		// Only report back to Gerrit if we have not reported previously.
+		if _, alreadyReported := c.inRepoConfigFailuresTracker[key]; !alreadyReported {
 			msg := fmt.Sprintf("%s: %v", inRepoConfigFailed, err)
 			if setReviewWerr := c.gc.SetReview(instance, change.ID, change.CurrentRevision, msg, nil); setReviewWerr != nil {
 				return fmt.Errorf("failed to get inRepoConfig and failed to set Review to notify user: %v and %v", err, setReviewWerr)
 			}
-			c.inRepoConfigFailures[key] = true
+			// The boolean value here is meaningless as we use the tracker as a
+			// set data structure, not as a hashmap where values actually
+			// matter. We just use a bool for simplicity.
+			c.inRepoConfigFailuresTracker[key] = true
 		}
 
 		// We do not want to return that there was an error processing change. If we are unable to get inRepoConfig we do not process. This is expected behavior.
 		return nil
 	}
 
-	// If failed in the past but passes now, allow future failures to send message
-	if _, ok := c.inRepoConfigFailures[key]; ok {
-		c.inRepoConfigFailures[key] = false
-	}
+	// If we are passing now, remove any record of previous failures in our
+	// tracker to allow future failures to send an error message back to Gerrit
+	// (through this same function).
+	delete(c.inRepoConfigFailuresTracker, key)
 	return nil
 }
 
@@ -490,7 +503,7 @@ func (c *Controller) processChange(logger logrus.FieldLogger, instance string, c
 		// Gerrit server might be unavailable intermittently, retry inrepoconfig
 		// processing for increased reliability.
 		for attempt := 0; attempt < inRepoConfigRetries; attempt++ {
-			postsubmits, err = c.inRepoConfigCacheHandler.GetPostsubmits(cloneURI, baseSHAGetter, headSHAGetter)
+			postsubmits, err = c.inRepoConfigCache.GetPostsubmits(cloneURI, baseSHAGetter, headSHAGetter)
 			// Break if there was no error, or if there was a merge conflict
 			if err == nil || strings.Contains(err.Error(), "Merge conflict in") {
 				break
@@ -510,7 +523,7 @@ func (c *Controller) processChange(logger logrus.FieldLogger, instance string, c
 				logger.WithError(postErr).Error("Failed reporting inrepoconfig processing error back to Gerrit.")
 			}
 			// Static postsubmit jobs are included as part of output from
-			// inRepoConfigCacheHandler.GetPostsubmits, fallback to static only
+			// inRepoConfigCache.GetPostsubmits, fallback to static only
 			// when inrepoconfig failed.
 			postsubmits = append(postsubmits, c.config().GetPostsubmitsStatic(cloneURI)...)
 		}
@@ -535,7 +548,7 @@ func (c *Controller) processChange(logger logrus.FieldLogger, instance string, c
 		// Gerrit server might be unavailable intermittently, retry inrepoconfig
 		// processing for increased reliability.
 		for attempt := 0; attempt < inRepoConfigRetries; attempt++ {
-			presubmits, err = c.inRepoConfigCacheHandler.GetPresubmits(cloneURI, baseSHAGetter, headSHAGetter)
+			presubmits, err = c.inRepoConfigCache.GetPresubmits(cloneURI, baseSHAGetter, headSHAGetter)
 			if err == nil {
 				break
 			}
@@ -582,23 +595,25 @@ func (c *Controller) processChange(logger logrus.FieldLogger, instance string, c
 			logger.WithField("lastUpdate", lastUpdate).Warnf("lastUpdate not found, falling back to now")
 		}
 
-		revision := change.Revisions[change.CurrentRevision]
-		failedJobs := failedJobs(account.AccountID, revision.Number, change.Messages...)
+		currentRevision := change.Revisions[change.CurrentRevision]
+		failedJobs := failedJobs(account.AccountID, currentRevision.Number, change.Messages...)
 		failed, all := presubmitContexts(failedJobs, presubmits, logger)
 		messages := currentMessages(change, lastUpdate)
 		logger.WithField("failed", len(failed)).Debug("Failed jobs parsed from previous comments.")
 		filters := []pjutil.Filter{
 			messageFilter(messages, failed, all, triggerTimes, logger),
 		}
-		// Automatically trigger the Prow jobs if the revision is new and the
-		// change is not in WorkInProgress.
-		if revision.Created.Time.After(lastUpdate) && !change.WorkInProgress {
+		// Automatically trigger the Prow jobs if the change has a revision with code change
+		// since last update and the change is not in WorkInProgress.
+		lastRevisionWithChange := lastRevisionWithCodeChange(change, lastUpdate)
+		if lastRevisionWithChange != nil && !change.WorkInProgress {
 			filters = append(filters, &timeAnnotationFilter{
 				Filter:       pjutil.NewTestAllFilter(),
-				eventTime:    revision.Created.Time,
+				eventTime:    lastRevisionWithChange.Created.Time,
 				triggerTimes: triggerTimes,
 			})
 		}
+
 		toTrigger, err := pjutil.FilterPresubmits(pjutil.NewAggregateFilter(filters), client.ChangedFilesProvider(&change), change.Branch, presubmits, logger)
 		if err != nil {
 			return fmt.Errorf("filter presubmits: %w", err)
@@ -683,6 +698,30 @@ func (c *Controller) processChange(logger logrus.FieldLogger, instance string, c
 		}
 		if err := c.gc.SetReview(instance, change.ID, change.CurrentRevision, message, nil); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// lastRevisionWithCodeChange tries to find a revision with code change since last update.
+// There is no point repeating tests if no code change happened since last update.
+func lastRevisionWithCodeChange(change client.ChangeInfo, lastUpdate time.Time) *client.RevisionInfo {
+	var revisionsWithCodeChange []client.RevisionInfo
+	for _, revision := range change.Revisions {
+		if revision.Kind == gerrit.NoCodeChange {
+			continue
+		}
+		revisionsWithCodeChange = append(revisionsWithCodeChange, revision)
+	}
+	// sorts in reverse chronological order
+	sort.Slice(revisionsWithCodeChange, func(i, j int) bool {
+		return revisionsWithCodeChange[i].Created.Time.After(revisionsWithCodeChange[j].Created.Time)
+	})
+
+	for _, revision := range revisionsWithCodeChange {
+		if revision.Created.Time.After(lastUpdate) {
+			return &revision
 		}
 	}
 

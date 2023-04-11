@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -103,6 +104,7 @@ func main() {
 		logrus.Fatalf("Invalid options: %v", err)
 	}
 
+	runtime.SetBlockProfileRate(100_000_000) // 0.1 second sample rate https://github.com/DataDog/go-profiler-notes/blob/main/guide/README.md#block-profiler-limitations
 	pprof.Instrument(o.instrumentationOptions)
 
 	ca, err := o.config.ConfigAgent()
@@ -129,7 +131,8 @@ func main() {
 	if err != nil {
 		logrus.WithError(err).Fatal("Error creating git client.")
 	}
-	cacheGetter, err := config.NewInRepoConfigCacheHandler(o.config.InRepoConfigCacheSize, ca, gitClient, o.config.InRepoConfigCacheCopies)
+
+	cacheGetter, err := config.NewInRepoConfigCache(o.config.InRepoConfigCacheSize, ca, gitClient)
 	if err != nil {
 		logrus.WithError(err).Fatal("Error creating InRepoConfigCacheGetter.")
 	}

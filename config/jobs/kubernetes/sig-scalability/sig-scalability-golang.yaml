@@ -35,13 +35,11 @@ periodics:
     testgrid-tab-name: build-and-push-k8s-at-golang-tip
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/bootstrap:v20221021-5771e8efb3
+    - image: gcr.io/k8s-staging-test-infra/bootstrap:v20230316-ac3134cff2
       command:
       - runner.sh
-      - /workspace/scenarios/execute.py
       args:
       - make
-      - --
       - --directory=/home/prow/go/src/k8s.io/perf-tests/golang
       # docker-in-docker needs privileged mode
       securityContext:
@@ -54,7 +52,7 @@ periodics:
           cpu: 4
           memory: "16Gi"
 
-- interval: 4h
+- interval: 24h
   name: ci-golang-tip-k8s-1-23
   cluster: k8s-infra-prow-build
   tags:
@@ -85,7 +83,7 @@ periodics:
     testgrid-tab-name: golang-tip-k8s-1-23
   spec:
     containers:
-    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-master
+    - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-master
       command:
       - runner.sh
       - /workspace/scenarios/kubernetes_e2e.py

@@ -9,7 +9,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
         - "./scripts/ci-test.sh"
     annotations:
@@ -25,7 +25,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
         - "./scripts/ci-build.sh"
     annotations:
@@ -36,8 +36,7 @@ presubmits:
     path_alias: "sigs.k8s.io/cluster-api-provider-azure"
     optional: false
     decorate: true
-    # please see: https://play.golang.org/p/JJSVylVPd53 for more insights
-    run_if_changed: (^[^d].*$)|(^d$)|(^.[^o].*$)|(^do$)|(^..[^c].*$)|(^doc$)|(^...[^s].*$)|(^docs$)|(^....[^/].*$)|(^[^d][^o][^c][^s]/.*$)
+    skip_if_only_changed: "^docs/|^\\.github/|\\.md$|^(\\.codespellignore|LICENSE|OWNERS|OWNERS_ALIASES|PROJECT|SECURITY_CONTACTS|Tiltfile|metadata\\.yaml|netlify\\.toml|tilt-provider\\.json)$"
     max_concurrency: 5
     labels:
       preset-dind-enabled: "true"
@@ -48,7 +47,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -69,8 +68,7 @@ presubmits:
     path_alias: "sigs.k8s.io/cluster-api-provider-azure"
     optional: false
     decorate: true
-    # please see: https://play.golang.org/p/JJSVylVPd53 for more insights
-    run_if_changed: (^[^d].*$)|(^d$)|(^.[^o].*$)|(^do$)|(^..[^c].*$)|(^doc$)|(^...[^s].*$)|(^docs$)|(^....[^/].*$)|(^[^d][^o][^c][^s]/.*$)
+    skip_if_only_changed: "^docs/|^\\.github/|\\.md$|^(\\.codespellignore|LICENSE|OWNERS|OWNERS_ALIASES|PROJECT|SECURITY_CONTACTS|Tiltfile|metadata\\.yaml|netlify\\.toml|tilt-provider\\.json)$"
     max_concurrency: 5
     labels:
       preset-dind-enabled: "true"
@@ -81,7 +79,7 @@ presubmits:
       - ^release-1.*
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
           command:
             - runner.sh
           args:
@@ -91,6 +89,8 @@ presubmits:
               value: "API Version Upgrade"
             - name: KUBERNETES_VERSION
               value: "v1.22.9"
+            - name: K8S_FEATURE_GATES
+              value: "WindowsHostProcessContainers=true" # TODO: remove once k8s version is 1.23+. Feature gate will be removed in 1.28.
           # docker-in-docker needs privileged mode
           securityContext:
             privileged: true
@@ -116,7 +116,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -137,8 +137,7 @@ presubmits:
     path_alias: "sigs.k8s.io/cluster-api-provider-azure"
     optional: true
     decorate: true
-    # please see: https://play.golang.org/p/JJSVylVPd53 for more insights
-    run_if_changed: (^[^d].*$)|(^d$)|(^.[^o].*$)|(^do$)|(^..[^c].*$)|(^doc$)|(^...[^s].*$)|(^docs$)|(^....[^/].*$)|(^[^d][^o][^c][^s]/.*$)
+    skip_if_only_changed: "^docs/|^\\.github/|\\.md$|^(\\.codespellignore|LICENSE|OWNERS|OWNERS_ALIASES|PROJECT|SECURITY_CONTACTS|Tiltfile|metadata\\.yaml|netlify\\.toml|tilt-provider\\.json)$"
     max_concurrency: 5
     labels:
       preset-dind-enabled: "true"
@@ -149,7 +148,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -166,14 +165,13 @@ presubmits:
       testgrid-dashboards: sig-cluster-lifecycle-cluster-api-provider-azure
       testgrid-tab-name: capz-pr-e2e-windows-dockershim-v1beta1
       testgrid-alert-email: k8s-infra-staging-cluster-api-azure@kubernetes.io
-  - name: pull-cluster-api-provider-azure-e2e-exp-v1beta1
+  - name: pull-cluster-api-provider-azure-e2e-aks-v1beta1
     path_alias: "sigs.k8s.io/cluster-api-provider-azure"
-    always_run: false
-    optional: true
+    optional: false
     decorate: true
     decoration_config:
       timeout: 4h
-    run_if_changed: '^((exp)\/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)|managed.*\.go|aks|^azure\/services\/agentpools\/'
+    skip_if_only_changed: "^docs/|^\\.github/|\\.md$|^(\\.codespellignore|LICENSE|OWNERS|OWNERS_ALIASES|PROJECT|SECURITY_CONTACTS|Tiltfile|metadata\\.yaml|netlify\\.toml|tilt-provider\\.json)$"
     max_concurrency: 5
     labels:
       preset-dind-enabled: "true"
@@ -184,14 +182,14 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
           - ./scripts/ci-e2e.sh
         env:
           - name: GINKGO_FOCUS
-            value: \[EXPERIMENTAL\]
+            value: \[Managed Kubernetes\]
           - name: GINKGO_SKIP
             value: ""
         # docker-in-docker needs privileged mode
@@ -199,11 +197,12 @@ presubmits:
           privileged: true
     annotations:
       testgrid-dashboards: sig-cluster-lifecycle-cluster-api-provider-azure
-      testgrid-tab-name: capz-pr-e2e-exp-v1beta1
+      testgrid-tab-name: capz-pr-e2e-aks-v1beta1
       testgrid-alert-email: k8s-infra-staging-cluster-api-azure@kubernetes.io
   - name: pull-cluster-api-provider-azure-capi-e2e-v1beta1
     path_alias: "sigs.k8s.io/cluster-api-provider-azure"
     always_run: false
+    run_if_changed: 'test\/e2e|templates\/test|scripts\/ci-e2e.sh|Makefile'
     optional: true
     decorate: true
     decoration_config:
@@ -218,7 +217,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -247,7 +246,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
         - "runner.sh"
         - "make"
@@ -274,7 +273,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -301,7 +300,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -313,8 +312,7 @@ presubmits:
     path_alias: "sigs.k8s.io/cluster-api-provider-azure"
     optional: false
     decorate: true
-    # please see: https://play.golang.org/p/JJSVylVPd53 for more insights
-    run_if_changed: (^[^d].*$)|(^d$)|(^.[^o].*$)|(^do$)|(^..[^c].*$)|(^doc$)|(^...[^s].*$)|(^docs$)|(^....[^/].*$)|(^[^d][^o][^c][^s]/.*$)
+    skip_if_only_changed: "^docs/|^\\.github/|\\.md$|^(\\.codespellignore|LICENSE|OWNERS|OWNERS_ALIASES|PROJECT|SECURITY_CONTACTS|Tiltfile|metadata\\.yaml|netlify\\.toml|tilt-provider\\.json)$"
     max_concurrency: 5
     labels:
       preset-dind-enabled: "true"
@@ -325,7 +323,7 @@ presubmits:
     - ^release-1.*
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
           - runner.sh
         args:
@@ -336,6 +334,8 @@ presubmits:
         env:
           - name: TEST_WINDOWS
             value: "true"
+          - name: WINDOWS_SERVER_VERSION
+            value: "windows-2022"
     annotations:
       testgrid-dashboards: sig-cluster-lifecycle-cluster-api-provider-azure
       testgrid-tab-name: capz-pr-ci-entrypoint-v1beta1
@@ -353,11 +353,17 @@ presubmits:
       preset-dind-enabled: "true"
       preset-kind-volume-mounts: "true"
       preset-azure-cred-only: "true"
+      preset-azure-anonymous-pull: "true"
     branches:
     - ^release-1.*
+    extra_refs:
+    - org: kubernetes-sigs
+      repo: cloud-provider-azure
+      base_ref: master
+      path_alias: sigs.k8s.io/cloud-provider-azure
     spec:
       containers:
-        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+        - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
           command:
             - runner.sh
           args:
@@ -395,7 +401,7 @@ presubmits:
       path_alias: k8s.io/kubernetes
     spec:
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
           - runner.sh
           - "./scripts/ci-e2e.sh"

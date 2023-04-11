@@ -11,7 +11,7 @@ presubmits:
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
         - runner.sh
         - ./scripts/ci-build.sh
@@ -23,17 +23,17 @@ presubmits:
     decoration_config:
       gcs_credentials_secret: "" # Use workload identity for uploading artifacts
     path_alias: sigs.k8s.io/cluster-api
-    always_run: true
     optional: true
     branches:
     - ^release-1.3$
+    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
       - command:
         - runner.sh
         - ./scripts/ci-apidiff.sh
-        image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+        image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
     annotations:
       testgrid-dashboards: sig-cluster-lifecycle-cluster-api-1.3
       testgrid-tab-name: capi-pr-apidiff-release-1-3
@@ -50,7 +50,7 @@ presubmits:
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         command:
         - "runner.sh"
         - ./scripts/ci-verify.sh
@@ -67,13 +67,13 @@ presubmits:
     decoration_config:
       gcs_credentials_secret: "" # Use workload identity for uploading artifacts
     path_alias: sigs.k8s.io/cluster-api
-    always_run: true
     branches:
     - ^release-1.3$
+    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
         - runner.sh
         - ./scripts/ci-test.sh
@@ -88,13 +88,13 @@ presubmits:
     decoration_config:
       gcs_credentials_secret: "" # Use workload identity for uploading artifacts
     path_alias: sigs.k8s.io/cluster-api
-    always_run: true
     branches:
     - ^release-1.3$
+    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
         - runner.sh
         - ./scripts/ci-test.sh
@@ -122,11 +122,11 @@ presubmits:
     branches:
     - ^release-1.3$
     path_alias: sigs.k8s.io/cluster-api
-    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|third_party|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
+    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
           - runner.sh
           - "./scripts/ci-e2e.sh"
@@ -153,11 +153,11 @@ presubmits:
     branches:
     - ^release-1.3$
     path_alias: sigs.k8s.io/cluster-api
-    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|third_party|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
+    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
         - runner.sh
         - "./scripts/ci-e2e.sh"
@@ -186,11 +186,11 @@ presubmits:
     branches:
     - ^release-1.3$
     path_alias: sigs.k8s.io/cluster-api
-    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|third_party|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
+    run_if_changed: '^((api|bootstrap|cmd|config|controllers|controlplane|errors|exp|feature|hack|internal|scripts|test|util|webhooks|version)/|main\.go|go\.mod|go\.sum|Dockerfile|Makefile)'
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
           - runner.sh
           - "./scripts/ci-e2e.sh"
@@ -226,7 +226,7 @@ presubmits:
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
           - runner.sh
           - "./scripts/ci-e2e.sh"
@@ -265,7 +265,7 @@ presubmits:
     spec:
       serviceAccountName: prowjob-default-sa
       containers:
-      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230111-cd1b3caf9c-1.25
+      - image: gcr.io/k8s-staging-test-infra/kubekins-e2e:v20230406-23cb1879e3-1.25
         args:
           - runner.sh
           - "./scripts/ci-e2e.sh"
